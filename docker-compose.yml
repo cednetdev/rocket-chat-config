@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  mongo:
+    image: mongo:5.0.15
+    restart: always
+    command: mongod --oplogSize 128 --replSet rs0 --storageEngine=wiredTiger
+    volumes:
+      - /storage/rocket/rocketchat/data/db:/data/db
+      - /storage/rocket/rocketchat/bk_restore:/rest/db
+    networks:
+      rocketchat-net:
+        ipv4_address: 172.28.1.2
+
+  rocketchat:
+    image: rocket.chat:latest
+    restart: always
+    environment:
+      - PORT=3000
+      - ROOT_URL=http://localhost:3000
+      - MONGO_URL=mongodb://172.28.1.2:27017/parties?replicaSet=rs0 
+      - MONGO_OPLOG_URL=mongodb://172.28.1.2:27017/local?replicaSet=rs0
+      - MAIL_URL=smtp://noreply@grupocednet.com.br:$daX+q)HAq@%@mail.grupocednet.com.br:587/
+    depends_on:
+      - mongo
+    ports:
+      - 3000:3000
+    networks:
+      rocketchat-net:
+        ipv4_address: 172.28.1.3
+
+  mongo-init-replica:
+    image: mongo:5.0.15
+    command: >
+      bash -c
+      "sleep 20 &&
+      mongo --host mongo:27017 --eval 'rs.initiate({ _id: \"rs0\", members: [{ _id: 0, host: \"mongo:27017\" }] })' &&
+      until mongo --host mongo:27017 --eval 'rs.isMaster()' | grep ismaster | grep true; do sleep 1; done"
+    depends_on:
+      - mongo
+    networks:
+      - rocketchat-net
+
+networks:
+  rocketchat-net:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16
